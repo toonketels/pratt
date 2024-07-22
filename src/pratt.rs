@@ -1,6 +1,6 @@
 use std::cmp::PartialEq;
 use std::slice::Iter;
-use crate::pratt::Exp::Infix;
+use crate::pratt::Exp::{Infix, Prefix};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
@@ -15,6 +15,7 @@ pub enum Token {
 #[derive(Debug, PartialEq)]
 pub enum Exp {
     Number(i32),
+    Prefix(Token, Box<Exp>),
     Infix(Box<Exp>, Token,  Box<Exp>)
 }
 
@@ -22,6 +23,10 @@ impl Exp {
     pub fn evaluate(&self) -> i32 {
         match self {
             Exp::Number(n) => *n,
+            Exp::Prefix(op, on) => match op {
+                Token::Minus => - on.evaluate(),
+                _ => panic!("not a prefix operator")
+            }
             Exp::Infix(left, op, right) => match op {
                 Token::Plus => left.evaluate() + right.evaluate(),
                 Token::Minus => left.evaluate() - right.evaluate(),
@@ -61,6 +66,10 @@ impl<'a> Parser<'a> {
     fn parse_expression(&mut self, precedence: i32) -> Exp {
         let mut left_exp = match self.current {
             Some(Token::Number(_)) => self.parse_number(),
+            Some(Token::Minus) => {
+                self.advance();
+                Prefix(Token::Minus, Box::new(self.parse_expression(self.precedence(Token::Minus))))
+            }
             _ => panic!("expected expression")
         };
 
@@ -139,4 +148,28 @@ mod tests {
         let left = Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(Exp::Number(6)));
         assert_eq!(parser.parse(), Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2))));
     }
+
+    #[test]
+    fn test_6() {
+        let tokens = vec![Number(15), Plus, Number(6), Star, Number(2), EOF];
+        let mut parser = Parser::new(&tokens);
+        let right = Exp::Infix(Box::new(Exp::Number(6)), Star, Box::new(Exp::Number(2)));
+        assert_eq!(parser.parse(), Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(right)));
+    }
+
+    #[test]
+    fn test_prefix() {
+        let tokens = vec![Minus, Number(15), EOF];
+        let mut parser = Parser::new(&tokens);
+        assert_eq!(parser.parse(), Exp::Prefix(Minus, Box::new(Exp::Number(15))));
+    }
+
+    #[test]
+    fn test_prefix_2() {
+        let tokens = vec![Minus, Number(15), Minus, Number(2), EOF];
+        let mut parser = Parser::new(&tokens);
+        let left = Exp::Prefix(Minus, Box::new(Exp::Number(15)));
+        assert_eq!(parser.parse(), Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2))));
+    }
+
 }

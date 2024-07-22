@@ -27,3 +27,17 @@
 - higher precedence operator will create a new node in the tree
   - with everything that came before as its lhs
 - the last created node is top of the tree, evaluated first
+- what is significant
+  - knowing you are in the lhs expression
+    - should only match tokens that can be in that position
+    - advance from there
+- add infix by lhs = this.parse_expression
+  - even works with same tokens
+  - depends on token position
+  - lhs or rhs
+    - rhs: will do an advance and then rhs=this.parse_expression
+- same level of precedence =>
+  - ((a + b) + c)
+- higher level of precedence
+  - (a + (b * c))
+- 
