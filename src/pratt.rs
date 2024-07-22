@@ -1,4 +1,5 @@
-use crate::pratt::Exp::{Grouping, Infix, Prefix};
+use crate::pratt::Exp::{Grouping, Infix, Prefix, Suffix};
+use crate::pratt::Token::Bang;
 use std::cmp::PartialEq;
 use std::slice::Iter;
 
@@ -9,6 +10,7 @@ pub enum Token {
     Minus,
     Star,
     Slash,
+    Bang,
     LeftParen,
     RightParen,
     EOF,
@@ -21,12 +23,14 @@ pub enum Exp {
     Grouping(Box<Exp>),
     Prefix(Token, Box<Exp>),
     Infix(Box<Exp>, Token, Box<Exp>),
+    Suffix(Box<Exp>, Token),
 }
 
 impl Exp {
     pub fn evaluate(&self) -> i32 {
         match self {
             Exp::Number(n) => *n,
+            Exp::Grouping(grouped) => grouped.evaluate(),
             Exp::Prefix(op, on) => match op {
                 Token::Minus => -on.evaluate(),
                 _ => panic!("not a prefix operator"),
@@ -38,7 +42,10 @@ impl Exp {
                 Token::Slash => left.evaluate() / right.evaluate(),
                 _ => panic!("not a math operator"),
             },
-            Exp::Grouping(grouped) => grouped.evaluate(),
+            Exp::Suffix(on, op) => match op {
+                Token::Bang => factorial(on.evaluate()),
+                _ => panic!("not a prefix operator"),
+            },
         }
     }
 }
@@ -95,6 +102,12 @@ impl<'a> Parser<'a> {
         };
 
         while let Some(op) = self.current {
+            if op == Bang {
+                self.advance();
+                left_exp = Suffix(Box::new(left_exp), op);
+                continue;
+            }
+
             let p = self.precedence(op);
 
             if p > precedence {
@@ -255,4 +268,35 @@ mod tests {
             Exp::Infix(Box::new(Exp::Number(2)), Star, Box::new(right))
         );
     }
+
+    #[test]
+    fn test_suffix_1() {
+        let tokens = vec![Number(3), Bang, Star, Number(15), EOF];
+        let mut parser = Parser::new(&tokens);
+        let left = Exp::Suffix(Box::new(Exp::Number(3)), Bang);
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(left), Star, Box::new(Exp::Number(15)))
+        );
+    }
+
+    #[test]
+    fn test_suffix_2() {
+        let tokens = vec![Number(3), Bang, Star, Number(15), Bang, EOF];
+        let mut parser = Parser::new(&tokens);
+        let left = Exp::Suffix(Box::new(Exp::Number(3)), Bang);
+        let right = Exp::Suffix(Box::new(Exp::Number(15)), Bang);
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(left), Star, Box::new(right))
+        );
+    }
+}
+
+fn factorial(n: i32) -> i32 {
+    let mut result = 1;
+    for i in 1..=n {
+        result *= i;
+    }
+    result
 }

@@ -31,6 +31,9 @@
   - knowing you are in the lhs expression
     - should only match tokens that can be in that position
     - advance from there
+  - immediately force some evaluation: prefix, suffix and grouping
+  - in op position (infix): can be suffix or infix
+  - infix is the only one that really deals with precedence
 - add infix by lhs = this.parse_expression
   - even works with same tokens
   - depends on token position
@@ -51,3 +54,8 @@
   - forces evaluation with `0` precedence which means "just start evaluating from scratch within here"
   - after done (because closing is `0` precedence, not evaluated too), expexts `)` and advances
   - key idea: grouping forces evaluation from scratch in the innter group + matches next token is `)`
+- suffix:
+  - dont rely on precedence rules but evaluate immediately
+  - so in op location, check for suffix token, advance, reassign left to next exp Suffx(left, token) and continue the loop
+    - to prevent the regular infix operators to be handled
+- 
