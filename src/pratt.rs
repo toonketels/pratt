@@ -1,6 +1,6 @@
+use crate::pratt::Exp::{Grouping, Infix, Prefix};
 use std::cmp::PartialEq;
 use std::slice::Iter;
-use crate::pratt::Exp::{Infix, Prefix};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
@@ -9,14 +9,18 @@ pub enum Token {
     Minus,
     Star,
     Slash,
+    LeftParen,
+    RightParen,
     EOF,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Exp {
     Number(i32),
+    // While not really needed as the tree express the grouping already still keep it to make it more obvious
+    Grouping(Box<Exp>),
     Prefix(Token, Box<Exp>),
-    Infix(Box<Exp>, Token,  Box<Exp>)
+    Infix(Box<Exp>, Token, Box<Exp>),
 }
 
 impl Exp {
@@ -24,16 +28,17 @@ impl Exp {
         match self {
             Exp::Number(n) => *n,
             Exp::Prefix(op, on) => match op {
-                Token::Minus => - on.evaluate(),
-                _ => panic!("not a prefix operator")
-            }
+                Token::Minus => -on.evaluate(),
+                _ => panic!("not a prefix operator"),
+            },
             Exp::Infix(left, op, right) => match op {
                 Token::Plus => left.evaluate() + right.evaluate(),
                 Token::Minus => left.evaluate() - right.evaluate(),
                 Token::Star => left.evaluate() * right.evaluate(),
                 Token::Slash => left.evaluate() / right.evaluate(),
-                _ => panic!("not a math operator")
-            }
+                _ => panic!("not a math operator"),
+            },
+            Exp::Grouping(grouped) => grouped.evaluate(),
         }
     }
 }
@@ -45,7 +50,10 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
-        let mut parser = Parser { tokens: tokens.iter(), current: None };
+        let mut parser = Parser {
+            tokens: tokens.iter(),
+            current: None,
+        };
         parser.advance();
         parser
     }
@@ -56,7 +64,6 @@ impl<'a> Parser<'a> {
             panic!("Expected to be done but still some tokens remaining")
         }
         exp
-
     }
 
     fn advance(&mut self) {
@@ -68,9 +75,23 @@ impl<'a> Parser<'a> {
             Some(Token::Number(_)) => self.parse_number(),
             Some(Token::Minus) => {
                 self.advance();
-                Prefix(Token::Minus, Box::new(self.parse_expression(self.precedence(Token::Minus))))
+                Prefix(
+                    Token::Minus,
+                    Box::new(self.parse_expression(self.precedence(Token::Minus))),
+                )
             }
-            _ => panic!("expected expression")
+            Some(Token::LeftParen) => {
+                self.advance(); // consume '('
+                let grouped = self.parse_expression(0);
+                match self.current {
+                    Some(Token::RightParen) => {
+                        self.advance(); // consume ')'
+                        Grouping(Box::new(grouped))
+                    }
+                    _ => panic!("expected RightParen"),
+                }
+            }
+            _ => panic!("expected expression"),
         };
 
         while let Some(op) = self.current {
@@ -108,8 +129,8 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::pratt::Token::*;
     use super::*;
+    use crate::pratt::Token::*;
 
     #[test]
     fn test_1() {
@@ -130,7 +151,10 @@ mod tests {
     fn test_3() {
         let tokens = vec![Number(15), Plus, Number(6), EOF];
         let mut parser = Parser::new(&tokens);
-        assert_eq!(parser.parse(), Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(Exp::Number(6))));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(Exp::Number(6)))
+        );
     }
 
     #[test]
@@ -146,7 +170,10 @@ mod tests {
         let tokens = vec![Number(15), Plus, Number(6), Minus, Number(2), EOF];
         let mut parser = Parser::new(&tokens);
         let left = Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(Exp::Number(6)));
-        assert_eq!(parser.parse(), Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2))));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2)))
+        );
     }
 
     #[test]
@@ -154,14 +181,20 @@ mod tests {
         let tokens = vec![Number(15), Plus, Number(6), Star, Number(2), EOF];
         let mut parser = Parser::new(&tokens);
         let right = Exp::Infix(Box::new(Exp::Number(6)), Star, Box::new(Exp::Number(2)));
-        assert_eq!(parser.parse(), Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(right)));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(Exp::Number(15)), Plus, Box::new(right))
+        );
     }
 
     #[test]
     fn test_prefix() {
         let tokens = vec![Minus, Number(15), EOF];
         let mut parser = Parser::new(&tokens);
-        assert_eq!(parser.parse(), Exp::Prefix(Minus, Box::new(Exp::Number(15))));
+        assert_eq!(
+            parser.parse(),
+            Exp::Prefix(Minus, Box::new(Exp::Number(15)))
+        );
     }
 
     #[test]
@@ -169,7 +202,57 @@ mod tests {
         let tokens = vec![Minus, Number(15), Minus, Number(2), EOF];
         let mut parser = Parser::new(&tokens);
         let left = Exp::Prefix(Minus, Box::new(Exp::Number(15)));
-        assert_eq!(parser.parse(), Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2))));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(left), Minus, Box::new(Exp::Number(2)))
+        );
     }
 
+    #[test]
+    fn test_grouped_1() {
+        let tokens = vec![
+            LeftParen,
+            Number(15),
+            Plus,
+            Number(6),
+            RightParen,
+            Star,
+            Number(2),
+            EOF,
+        ];
+        let mut parser = Parser::new(&tokens);
+        let left = Exp::Grouping(Box::new(Exp::Infix(
+            Box::new(Exp::Number(15)),
+            Plus,
+            Box::new(Exp::Number(6)),
+        )));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(left), Star, Box::new(Exp::Number(2)))
+        );
+    }
+
+    #[test]
+    fn test_grouped_2() {
+        let tokens = vec![
+            Number(2),
+            Star,
+            LeftParen,
+            Number(15),
+            Plus,
+            Number(6),
+            RightParen,
+            EOF,
+        ];
+        let mut parser = Parser::new(&tokens);
+        let right = Exp::Grouping(Box::new(Exp::Infix(
+            Box::new(Exp::Number(15)),
+            Plus,
+            Box::new(Exp::Number(6)),
+        )));
+        assert_eq!(
+            parser.parse(),
+            Exp::Infix(Box::new(Exp::Number(2)), Star, Box::new(right))
+        );
+    }
 }

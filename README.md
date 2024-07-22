@@ -38,6 +38,16 @@
     - rhs: will do an advance and then rhs=this.parse_expression
 - same level of precedence =>
   - ((a + b) + c)
+    1. makes node left op right
+    2. proceeds
 - higher level of precedence
   - (a + (b * c))
-- 
+    1. start making node left op 
+    2. instead of finishing with node right it creates a new node with higher precedence: left op right
+    3. finishing original node with right = new node
+- grouping:
+  - both `(` and `)` have 0 precedence
+  - `(` is evalutated in rhs position, advances
+  - forces evaluation with `0` precedence which means "just start evaluating from scratch within here"
+  - after done (because closing is `0` precedence, not evaluated too), expexts `)` and advances
+  - key idea: grouping forces evaluation from scratch in the innter group + matches next token is `)`
